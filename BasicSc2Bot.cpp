@@ -17,23 +17,24 @@ void BasicSc2Bot::OnStep() {
 
 // In your bot class.
 void BasicSc2Bot::OnUnitIdle(const Unit* unit) {
+	
 	switch (unit->unit_type.ToType()) {
-	case UNIT_TYPEID::ZERG_HIVE: {
-		Actions()->UnitCommand(unit, ABILITY_ID::TRAIN_DRONE);
-		std::cout << "Trained Drone\n";
-		break;
-	}
-	case UNIT_TYPEID::ZERG_DRONE: {
-		const Unit* mineral_target = FindNearestMineralPatch(unit->pos);
-		if (!mineral_target) {
+		case UNIT_TYPEID::ZERG_HIVE: {
+			Actions()->UnitCommand(unit, ABILITY_ID::TRAIN_DRONE);
+			std::cout << "Trained Drone\n";
 			break;
 		}
-		Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
-		break;
-	}
-	default: {
-		break;
-	}
+		case UNIT_TYPEID::ZERG_DRONE: {
+			const Unit* mineral_target = FindNearestMineralPatch(unit->pos);
+			if (!mineral_target) {
+				break;
+			}
+			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
+			break;
+		}
+		default: {
+			break;
+		}
 	}
 }
 
@@ -92,9 +93,7 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID ability_type_for_structure, UNIT_
 	float rx = GetRandomScalar();
 	float ry = GetRandomScalar();
 
-	Actions()->UnitCommand(unit_to_build,
-		ability_type_for_structure,
-		Point2D(unit_to_build->pos.x + rx * 15.0f, unit_to_build->pos.y + ry * 15.0f));
+	Actions()->UnitCommand(unit_to_build, ability_type_for_structure, Point2D(unit_to_build->pos.x + rx * 15.0f, unit_to_build->pos.y + ry * 15.0f));
 	std::cout << "Built structure\n";
 
 	return true;
