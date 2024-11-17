@@ -3,12 +3,15 @@
 #include <iostream>
 
 using namespace sc2;
+// Windows
 // ./BasicSc2Bot.exe -c -a zerg -d Hard -m CactusValleyLE.SC2Map
+// Mac
+// ./BasicSc2Bot -c -a zerg -d Hard -m CactusValleyLE.SC2Map
 
 void BasicSc2Bot::OnGameStart() {
 }
 void BasicSc2Bot::OnStep() {
-	std::cout << Observation()->GetMinerals() << " " << Observation()->GetVespene() << std::endl;
+	std::cout << "Minerals: " << Observation()->GetMinerals() << " Vespene Gas: " << Observation()->GetVespene() << std::endl;
 	TryBuildHatchery();
 }
 
@@ -49,6 +52,7 @@ const Unit* BasicSc2Bot::FindNearestMineralPatch(const Point2D& start) {
 	}
 	return target;
 }
+
 const Unit* BasicSc2Bot::FindNearestVespeneGeyser(const Point2D& start) {
 	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
 	float distance = std::numeric_limits<float>::max();
