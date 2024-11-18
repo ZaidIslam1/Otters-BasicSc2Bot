@@ -18,9 +18,7 @@ class BasicSc2Bot : public sc2::Agent {
   private:
 	// Utility methods
 	const Unit *FindNearestMineralPatch(const Point2D &start);
-	const Unit *FindNearestHatcheryNeedingLarvae(const Point2D &start);
 	Units GetUnitsOfType(UNIT_TYPEID type); // Retrieves units of the specified type
-	int CountUnits(UNIT_TYPEID type);       // Counts units of the specified type
 
 	// Zerg management methods
 	bool TryBuildSpawningPool();                                      // Ensures a Spawning Pool is built
@@ -30,7 +28,6 @@ class BasicSc2Bot : public sc2::Agent {
 
 	// Queen management
 	bool HasQueenAssigned(const Unit *hatchery); // Checks if a Queen is assigned to a Hatchery
-	bool HasSpawningPool();                      // Checks if a Spawning Pool exists
 };
 
 #endif

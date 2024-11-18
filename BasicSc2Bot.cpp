@@ -1,5 +1,6 @@
 #include "BasicSc2Bot.h"
 #include <sc2api/sc2_api.h>
+#include <sc2api/sc2_typeenums.h>
 
 using namespace sc2;
 
@@ -17,7 +18,7 @@ void BasicSc2Bot::OnStep() {
 
 	int current_workers = observation->GetFoodWorkers();
 	int max_workers_per_hatchery = 16 + 3 + 3; // 16 for Hatchery workers, 3 for first vespense extractor, 3 for second vespense extractor
-	int desired_workers = max_workers_per_hatchery * CountUnits(UNIT_TYPEID::ZERG_HATCHERY);
+	int desired_workers = static_cast<int>(max_workers_per_hatchery * GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size());
 
 	if (current_workers < desired_workers) { // Only spawn 22 Drones
 		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
@@ -59,19 +60,17 @@ bool BasicSc2Bot::TrySpawnLarvae() {
 		return false;
 
 	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
-
 	for (const auto &hatchery : hatcheries) {
 		if (!HasQueenAssigned(hatchery)) {                                 // If no queen is created
 			if (Observation()->GetMinerals() >= 150) {                     // Cost for queen
-				Actions()->UnitCommand(hatchery, ABILITY_ID::TRAIN_QUEEN); // Hat Train a queen
+				Actions()->UnitCommand(hatchery, ABILITY_ID::TRAIN_QUEEN); // Hatchery trains a queen
 				return true;
 			}
 		}
 
 		Units queens = GetUnitsOfType(UNIT_TYPEID::ZERG_QUEEN);
-
 		for (const auto &queen : queens) {
-			if (queen->energy >= 25 && DistanceSquared2D(queen->pos, hatchery->pos) < 10 * 10) { // When queen has enough energy and queen is nearby a hatchery
+			if (queen->energy >= 25 && DistanceSquared2D(queen->pos, hatchery->pos) < 10 * 10) { // When queens has enough energy and queens are nearby a hatchery
 				Actions()->UnitCommand(queen, ABILITY_ID::EFFECT_INJECTLARVA, hatchery);         // Spawn larva
 			}
 		}
@@ -105,71 +104,56 @@ bool BasicSc2Bot::TryBuildSpawningPool() {
 }
 
 bool BasicSc2Bot::HasQueenAssigned(const Unit *hatchery) {
+
 	Units queens = GetUnitsOfType(UNIT_TYPEID::ZERG_QUEEN);
-
 	for (const auto &queen : queens) {
-		if (DistanceSquared2D(hatchery->pos, queen->pos) < 10 * 10)
-			return true;
-	}
-
-	for (const auto &order : hatchery->orders) {
-		if (order.ability_id == ABILITY_ID::TRAIN_QUEEN)
+		if (DistanceSquared2D(hatchery->pos, queen->pos) < 10 * 10) // Checks if queen is nearby the hatchery within 10 units
 			return true;
 	}
 
 	return false;
 }
 
-const Unit *BasicSc2Bot::FindNearestHatcheryNeedingLarvae(const Point2D &start) {
-	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+bool BasicSc2Bot::TryTrainOverlord() {
+	const ObservationInterface *observation = Observation();
+	if (observation->GetFoodUsed() <= observation->GetFoodCap() - 2) // Workers cap hasn't reached return false
+		return false;
 
-	const Unit *target = nullptr;
+	Units larvas = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
+	for (const auto &larva : larvas) {
+		if (observation->GetMinerals() >= 100) {
+			Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD); // Checks for available larva and trains an overlord
+			return true;
+		}
+	}
+	return false; // All larvas are busy return false
+}
+
+const Unit *BasicSc2Bot::FindNearestMineralPatch(const Point2D &start) {
+	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
 	float distance = std::numeric_limits<float>::max();
-
-	for (const auto &hatchery : hatcheries) {
-		if (hatchery->energy >= 25) {
-			float d = DistanceSquared2D(start, hatchery->pos);
+	const Unit *target = nullptr;
+	for (const auto &u : units) {
+		if (u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD) {
+			float d = DistanceSquared2D(u->pos, start);
 			if (d < distance) {
 				distance = d;
-				target = hatchery;
+				target = u;
 			}
 		}
 	}
 	return target;
 }
 
-bool BasicSc2Bot::TryTrainOverlord() {
-	if (Observation()->GetFoodUsed() <= Observation()->GetFoodCap() - 2) // Workers cap hasn't reached return false
-		return false;
+Units BasicSc2Bot::GetUnitsOfType(UNIT_TYPEID type) {
+	Units units = Observation()->GetUnits(Unit::Alliance::Self);
+	Units units_vector;
 
-	Units larvas = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
-	for (const auto &larva : larvas) {
-		Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD); // Checks for available larva and trains an overlord
-		return true;
-	}
-	return false; // All larvas are busy return false
-}
-
-const Unit *BasicSc2Bot::FindNearestMineralPatch(const Point2D &start) {
-	Units minerals = GetUnitsOfType(UNIT_TYPEID::NEUTRAL_MINERALFIELD);
-
-	const Unit *target = nullptr;
-	float distance = std::numeric_limits<float>::max();
-
-	for (const auto &mineral : minerals) {
-		float d = DistanceSquared2D(mineral->pos, start);
-		if (d < distance) {
-			distance = d;
-			target = mineral;
+	for (const auto &unit : units) {
+		if (unit->unit_type == type) {    // If unit of the same type
+			units_vector.push_back(unit); // Push to the vector
 		}
 	}
-	return target;
-}
 
-Units BasicSc2Bot::GetUnitsOfType(UNIT_TYPEID type) {
-	return Observation()->GetUnits(Unit::Alliance::Self, [type](const Unit &u) { return u.unit_type == type; });
-}
-
-int BasicSc2Bot::CountUnits(UNIT_TYPEID type) {
-	return static_cast<int>(GetUnitsOfType(type).size());
+	return units_vector; // Return the vector
 }
