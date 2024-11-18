@@ -1,129 +1,182 @@
 #include "BasicSc2Bot.h"
 #include <sc2api/sc2_api.h>
-#include <iostream>
 
 using namespace sc2;
-// Windows
-// ./BasicSc2Bot.exe -c -a zerg -d Hard -m CactusValleyLE.SC2Map
-// Mac
-// ./BasicSc2Bot -c -a zerg -d Hard -m CactusValleyLE.SC2Map
 
 void BasicSc2Bot::OnGameStart() {
+	return;
 }
+
 void BasicSc2Bot::OnStep() {
-	std::cout << "Minerals: " << Observation()->GetMinerals() << " Vespene Gas: " << Observation()->GetVespene() << std::endl;
-	TryBuildHatchery();
+	const ObservationInterface *observation = Observation();
+
+	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
+		return;
+	TryBuildSpawningPool(); // Build a spawning pool for queen to be spawned
+	TrySpawnLarvae();       // Spawn larvas for other units to spawn
+
+	int current_workers = observation->GetFoodWorkers();
+	int max_workers_per_hatchery = 16 + 3 + 3; // 16 for Hatchery workers, 3 for first vespense extractor, 3 for second vespense extractor
+	int desired_workers = max_workers_per_hatchery * CountUnits(UNIT_TYPEID::ZERG_HATCHERY);
+
+	if (current_workers < desired_workers) { // Only spawn 22 Drones
+		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
+			return;
+	}
+
+	TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50); // Keep spawning Zerglings once all the above is done
 }
 
-// In your bot class.
-void BasicSc2Bot::OnUnitIdle(const Unit* unit) {
-	
+void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
+
 	switch (unit->unit_type.ToType()) {
-		case UNIT_TYPEID::ZERG_HIVE: {
-			Actions()->UnitCommand(unit, ABILITY_ID::TRAIN_DRONE);
-			std::cout << "Trained Drone\n";
-			break;
+	case UNIT_TYPEID::ZERG_DRONE: { // If unit type is Drone
+		const Unit *mineral_target = FindNearestMineralPatch(unit->pos);
+		if (mineral_target) {
+			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target); // Make them harvest minerals on idle
 		}
-		case UNIT_TYPEID::ZERG_DRONE: {
-			const Unit* mineral_target = FindNearestMineralPatch(unit->pos);
-			if (!mineral_target) {
-				break;
-			}
-			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
-			break;
+		break;
+	}
+	case UNIT_TYPEID::ZERG_QUEEN: { // If unit type is Queen
+		const Unit *target_hatchery = FindNearestHatcheryNeedingLarvae(unit->pos);
+		if (target_hatchery && unit->energy >= 25) {
+			Actions()->UnitCommand(unit, ABILITY_ID::EFFECT_INJECTLARVA, target_hatchery); // Make Queen inject more larvas for spawning other units
 		}
-		default: {
-			break;
-		}
+		break;
+	}
+	default:
+		break;
 	}
 }
 
-const Unit* BasicSc2Bot::FindNearestMineralPatch(const Point2D& start) {
-	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
-	float distance = std::numeric_limits<float>::max();
-	const Unit* target = nullptr;
-	for (const auto& u : units) {
-		if (u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD) {
-			float d = DistanceSquared2D(u->pos, start);
-			if (d < distance) {
-				distance = d;
-				target = u;
-			}
+bool BasicSc2Bot::TrainUnitFromLarvae(ABILITY_ID unit_ability, int unit_cost) {
+	Units larvas = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
+
+	for (const auto &larva : larvas) {
+		if (Observation()->GetMinerals() >= unit_cost) { // For each larva if enough minerals perform the ability ex: (Train_drone, Train_overlord, etc..)
+			Actions()->UnitCommand(larva, unit_ability);
+			return true;
 		}
 	}
-	return target;
+	return false;
 }
 
-const Unit* BasicSc2Bot::FindNearestVespeneGeyser(const Point2D& start) {
-	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
-	float distance = std::numeric_limits<float>::max();
-	const Unit* target = nullptr;
-	for (const auto& u : units) {
-		if (u->unit_type == UNIT_TYPEID::NEUTRAL_VESPENEGEYSER) {
-			float d = DistanceSquared2D(u->pos, start);
-			if (d < distance) {
-				distance = d;
-				target = u;
-			}
-		}
-	}
-	return target;
-}
+bool BasicSc2Bot::TrySpawnLarvae() {
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) // Spawning pool exists don't make another one
+		return false;
 
+	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
 
-bool BasicSc2Bot::TryBuildStructure(ABILITY_ID ability_type_for_structure, UNIT_TYPEID unit_type = UNIT_TYPEID::ZERG_DRONE) {
-	const ObservationInterface* observation = Observation();
-
-	// If a unit already is building a supply structure of this type, do nothing.
-	// Also get an scv to build the structure.
-	const Unit* unit_to_build = nullptr;
-	Units units = observation->GetUnits(Unit::Alliance::Self);
-	for (const auto& unit : units) {
-		for (const auto& order : unit->orders) {
-			if (order.ability_id == ability_type_for_structure) {
-				return false;
+	for (const auto &hatchery : hatcheries) {
+		if (!HasQueenAssigned(hatchery)) {
+			if (Observation()->GetMinerals() >= 150) {
+				Actions()->UnitCommand(hatchery, ABILITY_ID::TRAIN_QUEEN);
+				return true;
 			}
 		}
 
-		if (unit->unit_type == unit_type) {
-			unit_to_build = unit;
+		Units queens = GetUnitsOfType(UNIT_TYPEID::ZERG_QUEEN);
+
+		for (const auto &queen : queens) {
+			if (queen->energy >= 25 && DistanceSquared2D(queen->pos, hatchery->pos) < 10 * 10) {
+				Actions()->UnitCommand(queen, ABILITY_ID::EFFECT_INJECTLARVA, hatchery);
+			}
 		}
 	}
-
-	float rx = GetRandomScalar();
-	float ry = GetRandomScalar();
-
-	Actions()->UnitCommand(unit_to_build, ability_type_for_structure, Point2D(unit_to_build->pos.x + rx * 15.0f, unit_to_build->pos.y + ry * 15.0f));
-	std::cout << "Built structure\n";
-
 	return true;
 }
 
-bool BasicSc2Bot::TryBuildHatchery() {
-	const ObservationInterface* observation = Observation();
-
-	// If we are not supply capped, don't build a supply depot.
-	if (observation->GetFoodUsed() <= observation->GetFoodCap() - 2)
+bool BasicSc2Bot::TryBuildSpawningPool() {
+	if (!GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) // Spawning pool already exists return false
 		return false;
 
-	// Try and build a depot. Find a random SCV and give it the order.
-	return TryBuildStructure(ABILITY_ID::BUILD_HATCHERY);
-}
-
-bool BasicSc2Bot::TryBuildExtractor() {
-	const ObservationInterface* observation = Observation();
-
-	// If we are not supply capped, don't build a supply depot.
-	if (observation->GetFoodUsed() <= observation->GetFoodCap() - 2)
+	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE); // No drones are trained or not enough minerals
+	if (drones.empty() || Observation()->GetMinerals() < 200)
 		return false;
-	
-	Units units = observation->GetUnits(Unit::Alliance::Self);
-	for (auto& i : units) {
-		if (i->unit_type == UNIT_TYPEID::ZERG_EXTRACTOR) {
-			return false;
+
+	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+	const Unit *hatchery = hatcheries.front();
+	Point2D build_position = Point2D(hatchery->pos.x + 5, hatchery->pos.y + 5); // Assign a build position
+	const Unit *drone = drones.front();                                         // Get the first available drone to spawn a spawning pool
+
+	for (float x_offset = -2.0f; x_offset <= 2.0f; x_offset += 1.0f) { // Logic for finding a valid location to build
+		for (float y_offset = -2.0f; y_offset <= 2.0f; y_offset += 1.0f) {
+			Point2D test_position = Point2D(build_position.x + x_offset, build_position.y + y_offset);
+			if (Query()->Placement(ABILITY_ID::BUILD_SPAWNINGPOOL, test_position)) {
+				Actions()->UnitCommand(drone, ABILITY_ID::BUILD_SPAWNINGPOOL, test_position);
+				return true;
+			}
 		}
 	}
+	return false;
+}
 
-	// Try and build a depot. Find a random SCV and give it the order.
-	return TryBuildStructure(ABILITY_ID::BUILD_EXTRACTOR);
+bool BasicSc2Bot::HasQueenAssigned(const Unit *hatchery) {
+	Units queens = GetUnitsOfType(UNIT_TYPEID::ZERG_QUEEN);
+
+	for (const auto &queen : queens) {
+		if (DistanceSquared2D(hatchery->pos, queen->pos) < 10 * 10)
+			return true;
+	}
+
+	for (const auto &order : hatchery->orders) {
+		if (order.ability_id == ABILITY_ID::TRAIN_QUEEN)
+			return true;
+	}
+
+	return false;
+}
+
+const Unit *BasicSc2Bot::FindNearestHatcheryNeedingLarvae(const Point2D &start) {
+	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+
+	const Unit *target = nullptr;
+	float distance = std::numeric_limits<float>::max();
+
+	for (const auto &hatchery : hatcheries) {
+		if (hatchery->energy >= 25) {
+			float d = DistanceSquared2D(start, hatchery->pos);
+			if (d < distance) {
+				distance = d;
+				target = hatchery;
+			}
+		}
+	}
+	return target;
+}
+
+bool BasicSc2Bot::TryTrainOverlord() {
+	if (Observation()->GetFoodUsed() <= Observation()->GetFoodCap() - 2) // Workers cap hasn't reached return false
+		return false;
+
+	Units larvas = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
+	for (const auto &larva : larvas) {
+		Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD); // Checks for available larva and trains an overlord
+		return true;
+	}
+	return false; // All larvas are busy return false
+}
+
+const Unit *BasicSc2Bot::FindNearestMineralPatch(const Point2D &start) {
+	Units minerals = GetUnitsOfType(UNIT_TYPEID::NEUTRAL_MINERALFIELD);
+
+	const Unit *target = nullptr;
+	float distance = std::numeric_limits<float>::max();
+
+	for (const auto &mineral : minerals) {
+		float d = DistanceSquared2D(mineral->pos, start);
+		if (d < distance) {
+			distance = d;
+			target = mineral;
+		}
+	}
+	return target;
+}
+
+Units BasicSc2Bot::GetUnitsOfType(UNIT_TYPEID type) {
+	return Observation()->GetUnits(Unit::Alliance::Self, [type](const Unit &u) { return u.unit_type == type; });
+}
+
+int BasicSc2Bot::CountUnits(UNIT_TYPEID type) {
+	return static_cast<int>(GetUnitsOfType(type).size());
 }
