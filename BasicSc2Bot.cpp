@@ -37,13 +37,6 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 		}
 		break;
 	}
-	case UNIT_TYPEID::ZERG_QUEEN: { // If unit type is Queen
-		const Unit *target_hatchery = FindNearestHatcheryNeedingLarvae(unit->pos);
-		if (target_hatchery && unit->energy >= 25) {
-			Actions()->UnitCommand(unit, ABILITY_ID::EFFECT_INJECTLARVA, target_hatchery); // Make Queen inject more larvas for spawning other units
-		}
-		break;
-	}
 	default:
 		break;
 	}
@@ -68,9 +61,9 @@ bool BasicSc2Bot::TrySpawnLarvae() {
 	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
 
 	for (const auto &hatchery : hatcheries) {
-		if (!HasQueenAssigned(hatchery)) {
-			if (Observation()->GetMinerals() >= 150) {
-				Actions()->UnitCommand(hatchery, ABILITY_ID::TRAIN_QUEEN);
+		if (!HasQueenAssigned(hatchery)) {                                 // If no queen is created
+			if (Observation()->GetMinerals() >= 150) {                     // Cost for queen
+				Actions()->UnitCommand(hatchery, ABILITY_ID::TRAIN_QUEEN); // Hat Train a queen
 				return true;
 			}
 		}
@@ -78,8 +71,8 @@ bool BasicSc2Bot::TrySpawnLarvae() {
 		Units queens = GetUnitsOfType(UNIT_TYPEID::ZERG_QUEEN);
 
 		for (const auto &queen : queens) {
-			if (queen->energy >= 25 && DistanceSquared2D(queen->pos, hatchery->pos) < 10 * 10) {
-				Actions()->UnitCommand(queen, ABILITY_ID::EFFECT_INJECTLARVA, hatchery);
+			if (queen->energy >= 25 && DistanceSquared2D(queen->pos, hatchery->pos) < 10 * 10) { // When queen has enough energy and queen is nearby a hatchery
+				Actions()->UnitCommand(queen, ABILITY_ID::EFFECT_INJECTLARVA, hatchery);         // Spawn larva
 			}
 		}
 	}
@@ -95,7 +88,7 @@ bool BasicSc2Bot::TryBuildSpawningPool() {
 		return false;
 
 	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
-	const Unit *hatchery = hatcheries.front();
+	const Unit *hatchery = hatcheries.front();                                  // Get first hatchery
 	Point2D build_position = Point2D(hatchery->pos.x + 5, hatchery->pos.y + 5); // Assign a build position
 	const Unit *drone = drones.front();                                         // Get the first available drone to spawn a spawning pool
 
