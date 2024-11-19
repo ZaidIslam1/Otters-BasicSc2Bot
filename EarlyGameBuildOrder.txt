@@ -1,0 +1,57 @@
+We should make this build order first, it's only early game rn more can be built later
+
+Need to write functions to build all this
+
+Early Game
+
+Send first overlord to scout to safe location
+
+12 Supply - Build drone
+
+13 Supply - Build overload
+
+13 supply - Build drone
+
+14 Sup - Build 2 drones
+
+Set new drones to minerals
+
+Send new overlord to nearby mineral line
+Send one drone to that nearby mineral line
+
+17 sup - new Hatchery at new mineral line using sent drone
+
+18 Supply - Build/Rally new drone to first base gas
+17 supply - Build/Rally new drone to first base spawning pool location
+16 Supply - Build/Rally new drone to mineral line
+
+
+16 Sup - new drone to gas
+17 Sup - new drone to gas
+18 Sup - new drone to gas max out ot 3/3
+
+Rally new drones from first base to second base location
+
+20 sup - Build overlord
+
+When new hatchery finished build one queen at each hatchery
+
+Build 2 zerglings at each hatchery
+
+Get zergling metabolic boost upgrade
+
+Keep building drones throughout to fill up hatcheries and gas extractors as needed
+
+30 supply - Build overlord
+
+When the queens finish start building 2 more for each base
+
+Keep building drones 
+
+36 sup - Build overlord
+
+Build lair at main base
+
+Build 3 more gas extractors
+
+Keep building drones until saturated on both bases
