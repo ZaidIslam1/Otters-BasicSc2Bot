@@ -18,12 +18,15 @@ class BasicSc2Bot : public sc2::Agent {
   private:
 	// Utility methods
 	const Unit *FindNearestMineralPatch(const Point2D &start);
+	const Unit *FindNearestVespenseGeyser(const Point2D &start);
 	Units GetUnitsOfType(UNIT_TYPEID type); // Retrieves units of the specified type
 
 	// Zerg management methods
+	void AssignWorkersToExtractors();                                 // Assign workers to vespene extractor
+	bool TryBuildVespeneExtractor();                                  // Creates a Vespene Extractor at the closest location
 	bool TryBuildSpawningPool();                                      // Ensures a Spawning Pool is built
 	bool TryTrainOverlord();                                          // Handles Zerg supply management
-	bool TrySpawnLarvae();                                            // Manages larvae injection using Queens
+	bool InjectLarvae();                                              // Manages larvae injection using Queens
 	bool TrainUnitFromLarvae(ABILITY_ID unit_ability, int unit_cost); // Trains units from larvae
 
 	// Queen management
