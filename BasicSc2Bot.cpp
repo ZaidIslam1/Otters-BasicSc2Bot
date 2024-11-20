@@ -4,6 +4,14 @@
 
 using namespace sc2;
 
+/*
+# Windows
+./BasicSc2Bot.exe -c -a zerg -d Hard -m CactusValleyLE.SC2Map
+
+# Mac
+./BasicSc2Bot -c -a zerg -d Hard -m CactusValleyLE.SC2Map
+*/
+
 void BasicSc2Bot::OnGameStart() {
 	return;
 }
