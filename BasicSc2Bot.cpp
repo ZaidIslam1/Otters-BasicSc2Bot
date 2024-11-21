@@ -2,31 +2,114 @@
 #include <sc2api/sc2_api.h>
 #include <sc2api/sc2_typeenums.h>
 
+//. / BasicSc2Bot.exe - c - a zerg - d Hard - m CactusValleyLE.SC2Map
+
 using namespace sc2;
 
 void BasicSc2Bot::OnGameStart() {
+
+	const ObservationInterface* observation = Observation();
+	Point2D StartLoc = observation->GetStartLocation();
+	MineralPatches = ListMineralPatchesInfo(StartLoc);
+	std::sort(MineralPatches.begin(), MineralPatches.end(), customLess);
+	SecondNearestLine = FindNearestMineralLine(MineralPatches);
+
+	std::cout << "Start Coordinates: " << "(" << SecondNearestLine.x << ", " << SecondNearestLine.y << "\n";
+
+
 	return;
 }
 
 void BasicSc2Bot::OnStep() {
 	const ObservationInterface *observation = Observation();
 
+	TryBuildSecondHatchery();
 	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
 		return;
 	TryBuildSpawningPool(); // Build a spawning pool for queen to be spawned
-	TrySpawnLarvae();       // Spawn larvas for other units to spawn
+	//TrySpawnLarvae();       // Spawn larvas for other units to spawn
 
-	int current_workers = observation->GetFoodWorkers();
-	int max_workers_per_hatchery = 16 + 3 + 3; // 16 for Hatchery workers, 3 for first vespense extractor, 3 for second vespense extractor
-	int desired_workers = static_cast<int>(max_workers_per_hatchery * GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size());
+	//int current_workers = observation->GetFoodWorkers();
+	//int max_workers_per_hatchery = 16 + 3 + 3; // 16 for Hatchery workers, 3 for first vespense extractor, 3 for second vespense extractor
+	//int desired_workers = static_cast<int>(max_workers_per_hatchery * GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size());
 
-	if (current_workers < desired_workers) { // Only spawn 22 Drones
-		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
-			return;
+	//if (current_workers < desired_workers) { // Only spawn 22 Drones
+		//if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
+			//return;
+	//}
+
+	//TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50); // Keep spawning Zerglings once all the above is done
+
+
+	//if (once) {
+	//	Point2D StartLoc = observation->GetStartLocation();
+	//	std::cout << "Game W,H: " << observation->GetGameInfo().width << ", " << observation->GetGameInfo().height << "\n";
+	//	std::cout << "Start Coordinates: " << "(" << StartLoc.x << ", " << StartLoc.y << "\n";
+	//	
+	//	for (auto& i : MineralPatches) {
+	//		std::cout << "(" << i.PatchLoc.x << ", " << i.PatchLoc.y << ") - ";
+	//		std::cout << i.DistFromStart << "\n";
+	//	}
+	//	std::cout << MineralPatches.size() << "";
+	//	once = false;
+	//}
+}
+
+Point2D BasicSc2Bot::FindNearestMineralLine(std::vector<BasicSc2Bot::MineralPatchesInfo> MineralPatchesInfo) {
+	// For now this just returns the 10th nearest mineral patch as the mineral lines have about 7-9 mineral patches each
+	// Later change this to iteratively search for unused mineral lines
+	BasicSc2Bot::MineralPatchesInfo Patch = MineralPatchesInfo[9];
+	return Patch.PatchLoc;
+}
+
+
+const std::vector<BasicSc2Bot::MineralPatchesInfo> BasicSc2Bot::ListMineralPatchesInfo(const Point2D& start) {
+
+	std::vector<BasicSc2Bot::MineralPatchesInfo> MineralPatchesInfo;
+	
+	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
+	const Unit* target = nullptr;
+	for (const auto& u : units) {
+		if (u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD) {
+			float d = Distance2D(u->pos, start);
+			BasicSc2Bot::MineralPatchesInfo PatchInfo = {u->pos, d};
+			MineralPatchesInfo.push_back(PatchInfo);
+		}
+	}
+	return MineralPatchesInfo;
+}
+
+bool BasicSc2Bot::TryBuildSecondHatchery() {
+
+	if (!once) {
+		return false;
 	}
 
-	TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50); // Keep spawning Zerglings once all the above is done
+	if (!GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size()) { // We have 2 hatcheries already
+		return false;
+	}
+
+	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE); // No drones are trained or not enough minerals
+	if (drones.empty() || Observation()->GetMinerals() < 300) {
+		return false;
+	}
+
+	Point2D build_position = Point2D(SecondNearestLine.x + 5, SecondNearestLine.y);
+	const Unit* drone = drones.front();
+
+	for (float x_offset = -15.0f; x_offset <= 15.0f; x_offset += 1.0f) { // Logic for finding a valid location to build
+		for (float y_offset = -15.0f; y_offset <= 15.0f; y_offset += 1.0f) {
+			Point2D test_position = Point2D(build_position.x + x_offset, build_position.y + y_offset);
+			if (Query()->Placement(ABILITY_ID::BUILD_HATCHERY, test_position)) {
+				Actions()->UnitCommand(drone, ABILITY_ID::BUILD_HATCHERY, test_position);
+				once = false;
+				return true;
+			}
+		}
+	}
+	return false;
 }
+
 
 void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 
@@ -36,6 +119,10 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 		if (mineral_target) {
 			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target); // Make them harvest minerals on idle
 		}
+		break;
+	}
+	case UNIT_TYPEID::ZERG_OVERLORD: {
+		//TryBuildSecondHatchery();
 		break;
 	}
 	default:
