@@ -24,8 +24,6 @@ void BasicSc2Bot::OnStep() {
 	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
 		return;
 	TryBuildSpawningPool();     // Build a spawning pool for queen to be spawned
-	TryBuildVespeneExtractor(); // Build a vespene extractor
-	AssignWorkersToExtractors();
 	InjectLarvae(); // Spawn larvas for other units to spawn
 
 	int current_workers = observation->GetFoodWorkers();
@@ -37,6 +35,8 @@ void BasicSc2Bot::OnStep() {
 		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
 			return;
 	}
+	TryBuildVespeneExtractor(); // Build a vespene extractor
+	AssignWorkersToExtractors();
 	TryUpgradeBase();
 
 	TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50); // Keep spawning Zerglings once all the above is done
