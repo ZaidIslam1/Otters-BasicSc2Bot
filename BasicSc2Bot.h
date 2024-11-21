@@ -13,28 +13,28 @@ using namespace sc2;
 
 class BasicSc2Bot : public sc2::Agent {
   public:
-    virtual void OnGameStart() override;
-    virtual void OnStep() override;
-    virtual void OnUnitIdle(const Unit unit) override;
+	virtual void OnGameStart();
+	virtual void OnStep();
+	virtual void OnUnitIdle(const Unit *unit);
 
   private:
-    // Utility methods
-    const UnitFindNearestMineralPatch(const Point2D &start);
-    const Unit FindNearestVespenseGeyser(const Point2D &start);
-    Units GetUnitsOfType(UNIT_TYPEID type); // Retrieves units of the specified type
+	// Utility methods
+	const Unit *FindNearestMineralPatch(const Point2D &start);
+	const Unit *FindNearestVespenseGeyser(const Point2D &start);
+	Units GetUnitsOfType(UNIT_TYPEID type); // Retrieves units of the specified type
 
-    // Zerg management methods
-    void AssignWorkersToExtractors();                                 // Assign workers to vespene extractor
-    bool TryBuildVespeneExtractor();                                  // Creates a Vespene Extractor at the closest location
-    bool TryBuildSpawningPool();                                      // Ensures a Spawning Pool is built
-    bool TryTrainOverlord();                                          // Handles Zerg supply management
-    bool InjectLarvae();                                              // Manages larvae injection using Queens
-    bool TrainUnitFromLarvae(ABILITY_ID unit_ability, int unit_cost); // Trains units from larvae
-    bool TryUpgradeBase();                                            // For upgrading base to Liar, Hive
-    bool TryBuildInfestationPit();                                    // Requiremnt to upgrade to Hive
+	// Zerg management methods
+	void AssignWorkersToExtractors();                                 // Assign workers to vespene extractor
+	bool TryBuildVespeneExtractor();                                  // Creates a Vespene Extractor at the closest location
+	bool TryBuildSpawningPool();                                      // Ensures a Spawning Pool is built
+	bool TryTrainOverlord();                                          // Handles Zerg supply management
+	bool InjectLarvae();                                              // Manages larvae injection using Queens
+	bool TrainUnitFromLarvae(ABILITY_ID unit_ability, int unit_cost); // Trains units from larvae
+	bool TryUpgradeBase();                                            // For upgrading base to Liar, Hive
+	bool TryBuildInfestationPit();                                    // Requiremnt to upgrade to Hive
 
-    // Queen management
-    bool HasQueenAssigned(const Unithatchery); // Checks if a Queen is assigned to a Hatchery
+	// Queen management
+	bool HasQueenAssigned(const Unit *hatchery); // Checks if a Queen is assigned to a Hatchery
 };
 
 #endif

@@ -24,7 +24,8 @@ void BasicSc2Bot::OnStep() {
 	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
 		return;
 	TryBuildSpawningPool();     // Build a spawning pool for queen to be spawned
-	InjectLarvae(); // Spawn larvas for other units to spawn
+	InjectLarvae();             // Spawn larvas for other units to spawn
+	TryBuildVespeneExtractor(); // Build a vespene extractor
 
 	int current_workers = observation->GetFoodWorkers();
 	int max_workers_per_base = 16 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second vespense extractor
@@ -35,7 +36,6 @@ void BasicSc2Bot::OnStep() {
 		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
 			return;
 	}
-	TryBuildVespeneExtractor(); // Build a vespene extractor
 	AssignWorkersToExtractors();
 	TryUpgradeBase();
 
