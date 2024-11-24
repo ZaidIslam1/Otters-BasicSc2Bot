@@ -1,5 +1,7 @@
 #include "BasicSc2Bot.h"
+#include <random>
 #include <sc2api/sc2_api.h>
+#include <sc2api/sc2_common.h>
 #include <sc2api/sc2_interfaces.h>
 #include <sc2api/sc2_typeenums.h>
 #include <sc2api/sc2_unit.h>
@@ -23,9 +25,8 @@ void BasicSc2Bot::OnStep() {
 
 	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
 		return;
-	TryBuildSpawningPool();     // Build a spawning pool for queen to be spawned
-	InjectLarvae();             // Spawn larvas for other units to spawn
-	TryBuildVespeneExtractor(); // Build a vespene extractor
+	TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL); // Build Spawning Pool
+	InjectLarvae();                                                                    // Spawn larvas for other units to spawn
 
 	int current_workers = observation->GetFoodWorkers();
 	int max_workers_per_base = 16 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second vespense extractor
@@ -36,20 +37,45 @@ void BasicSc2Bot::OnStep() {
 		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
 			return;
 	}
+	TryBuildVespeneExtractor(); // Build a vespene extractor
 	AssignWorkersToExtractors();
+	TryBuildStructure(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_ROACHWARREN); // Build Roach Warren
 	TryUpgradeBase();
+	TryBuildStructure(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_HYDRALISKDEN); // Build HydraLisk Den
 
-	TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50); // Keep spawning Zerglings once all the above is done
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
+	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ROACH, 75, 25);
+	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISK).size() <= 40 && !GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_HYDRALISK, 75, 25);
+	}
 }
 
 void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 	switch (unit->unit_type.ToType()) {
 	case UNIT_TYPEID::ZERG_DRONE: {
 		const Unit *mineral_target = FindNearestMineralPatch(unit->pos);
-		if (!mineral_target) {
+		if (mineral_target) {
+			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
+		}
+		break;
+	}
+	case UNIT_TYPEID::ZERG_OVERLORD: {
+		const GameInfo &game_info = Observation()->GetGameInfo();
+
+		std::vector<Point2D> scouting_points;
+		scouting_points.insert(scouting_points.end(), game_info.enemy_start_locations.begin(), game_info.enemy_start_locations.end());
+
+		Units mineral_fields = GetUnitsOfType(UNIT_TYPEID::NEUTRAL_MINERALFIELD);
+		for (const auto &mineral : mineral_fields) {
+			scouting_points.push_back(mineral->pos);
+		}
+		std::shuffle(scouting_points.begin(), scouting_points.end(), std::mt19937(std::random_device()()));
+		for (const Point2D &point : scouting_points) {
+			Actions()->UnitCommand(unit, ABILITY_ID::SMART, point);
 			break;
 		}
-		Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
 		break;
 	}
 	default:
@@ -57,8 +83,39 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 	}
 }
 
-bool BasicSc2Bot::TryBuildInfestationPit() {
-	return true;
+bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id) {
+	if (!GetUnitsOfType(structure_id).empty()) // Already exists
+		return false;
+
+	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE);
+	if (drones.empty() || Observation()->GetMinerals() < 200)
+		return false;
+
+	// Include Hatchery, Lair, and Hive for position selection
+	Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+	Units lairs = GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR);
+	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
+
+	bases.insert(bases.end(), lairs.begin(), lairs.end());
+	bases.insert(bases.end(), hives.begin(), hives.end());
+
+	if (bases.empty())
+		return false;
+
+	const Unit *base = bases.front();
+	Point2D build_position = Point2D(base->pos.x + 5, base->pos.y + 5);
+
+	const Unit *drone = drones.front();
+	for (float x_offset = -2.0f; x_offset <= 2.0f; x_offset += 1.0f) {
+		for (float y_offset = -2.0f; y_offset <= 2.0f; y_offset += 1.0f) {
+			Point2D test_position = Point2D(build_position.x + x_offset, build_position.y + y_offset);
+			if (Query()->Placement(build_structure, test_position)) {
+				Actions()->UnitCommand(drone, build_structure, test_position);
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 bool BasicSc2Bot::TryUpgradeBase() {
@@ -116,11 +173,12 @@ bool BasicSc2Bot::TryBuildVespeneExtractor() {
 	return true;
 }
 
-bool BasicSc2Bot::TrainUnitFromLarvae(ABILITY_ID unit_ability, int unit_cost) {
+bool BasicSc2Bot::TrainUnitFromLarvae(ABILITY_ID unit_ability, int mineral_cost, int vespene_cost) {
 	Units larvas = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
 
 	for (const auto &larva : larvas) {
-		if (Observation()->GetMinerals() >= unit_cost) { // For each larva if enough minerals, perform the ability ex: (Train_drone, Train_overlord, Train_zerling, etc..)
+		if (Observation()->GetMinerals() >= mineral_cost &&
+		    Observation()->GetVespene() >= vespene_cost) { // For each larva if enough minerals, perform the ability ex: (Train_drone, Train_overlord, Train_zerling, etc..)
 			Actions()->UnitCommand(larva, unit_ability);
 			return true;
 		}
@@ -155,41 +213,6 @@ bool BasicSc2Bot::InjectLarvae() {
 	}
 
 	return false; // No actions performed
-}
-
-bool BasicSc2Bot::TryBuildSpawningPool() {
-	if (!GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) // Already exists
-		return false;
-
-	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE);
-	if (drones.empty() || Observation()->GetMinerals() < 200)
-		return false;
-
-	// Include Hatchery, Lair, and Hive for position selection
-	Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
-	Units lairs = GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR);
-	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
-
-	bases.insert(bases.end(), lairs.begin(), lairs.end());
-	bases.insert(bases.end(), hives.begin(), hives.end());
-
-	if (bases.empty())
-		return false;
-
-	const Unit *base = bases.front();
-	Point2D build_position = Point2D(base->pos.x + 5, base->pos.y + 5);
-
-	const Unit *drone = drones.front();
-	for (float x_offset = -2.0f; x_offset <= 2.0f; x_offset += 1.0f) {
-		for (float y_offset = -2.0f; y_offset <= 2.0f; y_offset += 1.0f) {
-			Point2D test_position = Point2D(build_position.x + x_offset, build_position.y + y_offset);
-			if (Query()->Placement(ABILITY_ID::BUILD_SPAWNINGPOOL, test_position)) {
-				Actions()->UnitCommand(drone, ABILITY_ID::BUILD_SPAWNINGPOOL, test_position);
-				return true;
-			}
-		}
-	}
-	return false;
 }
 
 bool BasicSc2Bot::HasQueenAssigned(const Unit *base) {
