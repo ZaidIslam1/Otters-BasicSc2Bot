@@ -27,7 +27,7 @@ class BasicSc2Bot : public sc2::Agent {
 	void AssignWorkersToExtractors();                                                                                     // Assign workers to vespene extractor
 	bool TryBuildVespeneExtractor();                                                                                      // Creates a Vespene Extractor at the closest location
 	bool TryTrainOverlord();                                                                                              // Handles Zerg supply management
-	bool InjectLarvae();                                                                                                  // Manages larvae injection using Queens
+	bool QueenInjectLarvae();                                                                                             // Manages larvae injection using Queens
 	bool TrainUnitFromLarvae(ABILITY_ID unit_ability, int mineral_cost, int vespene_cost = 0);                            // Trains units from larvae
 	bool TryUpgradeBase();                                                                                                // For upgrading base to Liar, Hive
 	bool TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id, int mineral_cost, int vespene_cost = 0); // Build Structure

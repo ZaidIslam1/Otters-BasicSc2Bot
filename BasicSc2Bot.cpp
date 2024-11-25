@@ -28,10 +28,10 @@ void BasicSc2Bot::OnStep() {
 		return;
 
 	TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200); // Build Spawning Pool
-	InjectLarvae();
+	QueenInjectLarvae();
 
 	int current_workers = observation->GetFoodWorkers();
-	int max_workers_per_base = 16 + 3 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second
+	int max_workers_per_base = 16 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second
 	int total_bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size() + GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).size() + GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE).size();
 	int desired_workers = max_workers_per_base * total_bases;
 
@@ -43,26 +43,21 @@ void BasicSc2Bot::OnStep() {
 	TryBuildVespeneExtractor(); // Build a Vespene Extractor
 	AssignWorkersToExtractors();
 
-	// Wait until Spawning Pool is completed before building Roach Warren
 	Units spawning_pools = GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL);
 	if (!spawning_pools.empty() && spawning_pools.front()->build_progress == 1.0) {
 		TryBuildStructure(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_ROACHWARREN, 150);
 	}
 
-	// Wait for Lair upgrade before building advanced tech structures
 	Units lairs = GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR);
 	if (lairs.empty() && !GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).empty()) {
 		TryUpgradeBase();
 	} else if (!lairs.empty() && lairs.front()->build_progress == 1.0) {
-		// Build tech structures sequentially
 		Units hydralisk_dens = GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN);
 		if (hydralisk_dens.empty()) {
-			// Build Hydralisk Den if it doesn't exist
 			if (TryBuildStructure(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_HYDRALISKDEN, 100, 50)) {
 				return; // Wait for the Hydralisk Den to start building
 			}
 		} else {
-			// Wait for Hydralisk Den to complete before proceeding
 			if (hydralisk_dens.front()->build_progress < 1.0) {
 				return; // Hydralisk Den still under construction, wait
 			}
@@ -70,35 +65,35 @@ void BasicSc2Bot::OnStep() {
 
 		Units spires = GetUnitsOfType(UNIT_TYPEID::ZERG_SPIRE);
 		if (spires.empty()) {
-			// Build Spire if it doesn't exist
 			if (TryBuildStructure(ABILITY_ID::BUILD_SPIRE, UNIT_TYPEID::ZERG_SPIRE, 200, 150)) {
 				return; // Wait for the Spire to start building
 			}
 		} else {
-			// Wait for Spire to complete before proceeding
 			if (spires.front()->build_progress < 1.0) {
 				return; // Spire still under construction, wait
 			}
 		}
 	}
 
+	// Train units based on available tech
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 25 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
+	}
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 25 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ROACH, 75, 25);
+	}
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISK).size() <= 10 && !GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_HYDRALISK, 100, 50);
+	}
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_MUTALISK).size() <= 20 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPIRE).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_MUTALISK, 100, 100);
+	}
 	// Wait for Hive upgrade before building Infestation Pit
 	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
 	if (hives.empty()) {
 		TryBuildStructure(ABILITY_ID::BUILD_INFESTATIONPIT, UNIT_TYPEID::ZERG_INFESTATIONPIT, 100, 100);
 	}
 	TryUpgradeBase();
-
-	// Train units based on available tech
-	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 5 && !spawning_pools.empty()) {
-		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
-	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
-		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ROACH, 75, 25);
-	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISK).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN).empty()) {
-		TrainUnitFromLarvae(ABILITY_ID::TRAIN_HYDRALISK, 100, 50);
-	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_MUTALISK).size() <= 40 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPIRE).empty()) {
-		TrainUnitFromLarvae(ABILITY_ID::TRAIN_MUTALISK, 100, 100);
-	}
 }
 
 void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
@@ -134,8 +129,9 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 
 bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id, int mineral_cost, int vespene_cost) {
 	// Check if the structure already exists or is under construction
-	if (!GetUnitsOfType(structure_id).empty()) // Already exists
+	if (!GetUnitsOfType(structure_id).empty()) {
 		return false;
+	}
 
 	if (Observation()->GetMinerals() < mineral_cost || Observation()->GetVespene() < vespene_cost) {
 		return false;
@@ -158,21 +154,40 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 	}
 
 	const Unit *base = bases.front();
-	Point2D initial_build_position = Point2D(base->pos.x + 5, base->pos.y + 5);
 	const Unit *drone = drones.front();
 	if (!drone) {
 		return false;
 	}
 
-	// Dynamically expand the search area for placement
-	const float max_search_radius = 10.0f; // Maximum radius to search for placement
-	const float step_size = 1.0f;          // Step size for expanding the search
+	// Starting position near the base
+	// Starting position near the base
+	Point2D base_position = base->pos;
+	const float max_search_radius = 10.0f;    // Maximum radius to search for placement
+	const float step_size = 1.0f;             // Step size for expanding the search
+	const float min_structure_spacing = 3.0f; // Minimum spacing between structures
 
+	// Search in all directions around the base
 	for (float radius = 2.0f; radius <= max_search_radius; radius += step_size) {
 		for (float x_offset = -radius; x_offset <= radius; x_offset += step_size) {
 			for (float y_offset = -radius; y_offset <= radius; y_offset += step_size) {
-				Point2D test_position = Point2D(initial_build_position.x + x_offset, initial_build_position.y + y_offset);
-				if (Query()->Placement(build_structure, test_position)) {
+				// Skip positions that are outside the circular search radius
+				if (sqrt(x_offset * x_offset + y_offset * y_offset) > radius) {
+					continue;
+				}
+
+				// Test this position for structure placement
+				Point2D test_position = Point2D(base_position.x + x_offset, base_position.y + y_offset);
+
+				// Ensure minimum distance from other structures
+				bool is_too_close = false;
+				for (const Unit *existing_structure : Observation()->GetUnits(Unit::Alliance::Self)) {
+					if (DistanceSquared2D(test_position, existing_structure->pos) < min_structure_spacing * min_structure_spacing) {
+						is_too_close = true;
+						break;
+					}
+				}
+
+				if (!is_too_close && Query()->Placement(build_structure, test_position)) {
 					Actions()->UnitCommand(drone, build_structure, test_position);
 					return true;
 				}
@@ -180,7 +195,7 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 		}
 	}
 
-	std::cout << "Failed to find placement for " << std::endl;
+	// No valid position found
 	return false;
 }
 
@@ -252,7 +267,7 @@ bool BasicSc2Bot::TrainUnitFromLarvae(ABILITY_ID unit_ability, int mineral_cost,
 	return false;
 }
 
-bool BasicSc2Bot::InjectLarvae() {
+bool BasicSc2Bot::QueenInjectLarvae() {
 	Units hatcheries = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
 	Units lairs = GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR);
 	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
@@ -289,11 +304,11 @@ bool BasicSc2Bot::HasQueenAssigned(const Unit *base) {
 			return true;
 		}
 	}
-	for (const auto &order : base->orders) {
-		if (order.ability_id == ABILITY_ID::TRAIN_QUEEN) {
-			return true; // A queen is being trained at this base
-		}
-	}
+	// for (const auto &order : base->orders) {
+	// 	if (order.ability_id == ABILITY_ID::TRAIN_QUEEN) {
+	// 		return true; // A queen is being trained at this base
+	// 	}
+	// }
 
 	return false; // No queen assigned or being trained
 }
