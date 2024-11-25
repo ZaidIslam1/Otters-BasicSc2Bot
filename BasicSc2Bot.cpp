@@ -25,8 +25,8 @@ void BasicSc2Bot::OnStep() {
 
 	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
 		return;
-	TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL); // Build Spawning Pool
-	InjectLarvae();                                                                    // Spawn larvas for other units to spawn
+	TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200); // Build Spawning Pool
+	InjectLarvae();                                                                         // Spawn larvas for other units to spawn
 
 	int current_workers = observation->GetFoodWorkers();
 	int max_workers_per_base = 16 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second vespense extractor
@@ -39,16 +39,36 @@ void BasicSc2Bot::OnStep() {
 	}
 	TryBuildVespeneExtractor(); // Build a vespene extractor
 	AssignWorkersToExtractors();
-	TryBuildStructure(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_ROACHWARREN); // Build Roach Warren
-	TryUpgradeBase();
-	TryBuildStructure(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_HYDRALISKDEN); // Build HydraLisk Den
+
+	// Build Roach Warren once Spawning Pool exists
+	if (!GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
+		TryBuildStructure(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_ROACHWARREN, 150);
+	}
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).empty() && GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size() > 0) {
+		TryUpgradeBase();
+	}
+
+	// Build advanced tech structures after upgrading Hatchery to Lair
+	else if (!GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).empty()) {
+		TryBuildStructure(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_HYDRALISKDEN, 100, 50);
+		TryBuildStructure(ABILITY_ID::BUILD_SPIRE, UNIT_TYPEID::ZERG_SPIRE, 200, 150);
+	}
+
+	// Upgrade Lair to Hive if prerequisites are met
+	else if (!GetUnitsOfType(UNIT_TYPEID::ZERG_INFESTATIONPIT).empty()) {
+		TryUpgradeBase();
+	} else if (!GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE).empty()) { // Build Infestation Pit if Hive doesn't exist
+		TryBuildStructure(ABILITY_ID::BUILD_INFESTATIONPIT, UNIT_TYPEID::ZERG_INFESTATIONPIT, 100, 100);
+	}
 
 	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
 	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ROACH, 75, 25);
-	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISK).size() <= 40 && !GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN).empty()) {
-		TrainUnitFromLarvae(ABILITY_ID::TRAIN_HYDRALISK, 75, 25);
+	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISK).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_HYDRALISK, 100, 50);
+	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_MUTALISK).size() <= 40 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPIRE).empty()) {
+		TrainUnitFromLarvae(ABILITY_ID::TRAIN_MUTALISK, 100, 100);
 	}
 }
 
@@ -62,20 +82,20 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 		break;
 	}
 	case UNIT_TYPEID::ZERG_OVERLORD: {
-		const GameInfo &game_info = Observation()->GetGameInfo();
+		// const GameInfo &game_info = Observation()->GetGameInfo();
 
-		std::vector<Point2D> scouting_points;
-		scouting_points.insert(scouting_points.end(), game_info.enemy_start_locations.begin(), game_info.enemy_start_locations.end());
+		// std::vector<Point2D> scouting_points;
+		// scouting_points.insert(scouting_points.end(), game_info.enemy_start_locations.begin(), game_info.enemy_start_locations.end());
 
-		Units mineral_fields = GetUnitsOfType(UNIT_TYPEID::NEUTRAL_MINERALFIELD);
-		for (const auto &mineral : mineral_fields) {
-			scouting_points.push_back(mineral->pos);
-		}
-		std::shuffle(scouting_points.begin(), scouting_points.end(), std::mt19937(std::random_device()()));
-		for (const Point2D &point : scouting_points) {
-			Actions()->UnitCommand(unit, ABILITY_ID::SMART, point);
-			break;
-		}
+		// Units mineral_fields = GetUnitsOfType(UNIT_TYPEID::NEUTRAL_MINERALFIELD);
+		// for (const auto &mineral : mineral_fields) {
+		// 	scouting_points.push_back(mineral->pos);
+		// }
+		// std::shuffle(scouting_points.begin(), scouting_points.end(), std::mt19937(std::random_device()()));
+		// for (const Point2D &point : scouting_points) {
+		// 	Actions()->UnitCommand(unit, ABILITY_ID::SMART, point);
+		// 	break;
+		// }
 		break;
 	}
 	default:
@@ -83,12 +103,18 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 	}
 }
 
-bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id) {
+bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id, int mineral_cost, int vespene_cost) {
+	// Check if the structure already exists
 	if (!GetUnitsOfType(structure_id).empty()) // Already exists
 		return false;
 
+	// Check resource availability
+	if (Observation()->GetMinerals() < mineral_cost || Observation()->GetVespene() < vespene_cost)
+		return false;
+
+	// Get available drones
 	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE);
-	if (drones.empty() || Observation()->GetMinerals() < 200)
+	if (drones.empty())
 		return false;
 
 	// Include Hatchery, Lair, and Hive for position selection
@@ -105,6 +131,7 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 	const Unit *base = bases.front();
 	Point2D build_position = Point2D(base->pos.x + 5, base->pos.y + 5);
 
+	// Assign the first available drone to construct the structure
 	const Unit *drone = drones.front();
 	for (float x_offset = -2.0f; x_offset <= 2.0f; x_offset += 1.0f) {
 		for (float y_offset = -2.0f; y_offset <= 2.0f; y_offset += 1.0f) {
@@ -115,6 +142,7 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 			}
 		}
 	}
+
 	return false;
 }
 
@@ -217,11 +245,19 @@ bool BasicSc2Bot::InjectLarvae() {
 
 bool BasicSc2Bot::HasQueenAssigned(const Unit *base) {
 	Units queens = GetUnitsOfType(UNIT_TYPEID::ZERG_QUEEN);
+
 	for (const Unit *queen : queens) {
-		if (DistanceSquared2D(base->pos, queen->pos) < 10 * 10)
+		if (DistanceSquared2D(base->pos, queen->pos) < 10 * 10) {
 			return true;
+		}
 	}
-	return false;
+	for (const auto &order : base->orders) {
+		if (order.ability_id == ABILITY_ID::TRAIN_QUEEN) {
+			return true; // A queen is being trained at this base
+		}
+	}
+
+	return false; // No queen assigned or being trained
 }
 
 bool BasicSc2Bot::TryTrainOverlord() {
