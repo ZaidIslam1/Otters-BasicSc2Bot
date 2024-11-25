@@ -1,4 +1,5 @@
 #include "BasicSc2Bot.h"
+#include <ostream>
 #include <random>
 #include <sc2api/sc2_api.h>
 #include <sc2api/sc2_common.h>
@@ -23,45 +24,73 @@ void BasicSc2Bot::OnGameStart() {
 void BasicSc2Bot::OnStep() {
 	const ObservationInterface *observation = Observation();
 
-	if (TryTrainOverlord()) // Always check if overlord needed before spawning more units
+	if (TryTrainOverlord()) // Train Overlord if needed
 		return;
+
 	TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200); // Build Spawning Pool
-	InjectLarvae();                                                                         // Spawn larvas for other units to spawn
+	InjectLarvae();
 
 	int current_workers = observation->GetFoodWorkers();
-	int max_workers_per_base = 16 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second vespense extractor
+	int max_workers_per_base = 16 + 3 + 3 + 3; // 16 for base workers, 3 for first vespense extractor, 3 for second
 	int total_bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size() + GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).size() + GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE).size();
 	int desired_workers = max_workers_per_base * total_bases;
 
-	if (current_workers < desired_workers) { // Only spawn 22 Drones
+	if (current_workers < desired_workers) { // Train Drones if under desired count
 		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
 			return;
 	}
-	TryBuildVespeneExtractor(); // Build a vespene extractor
+
+	TryBuildVespeneExtractor(); // Build a Vespene Extractor
 	AssignWorkersToExtractors();
 
-	// Build Roach Warren once Spawning Pool exists
-	if (!GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
+	// Wait until Spawning Pool is completed before building Roach Warren
+	Units spawning_pools = GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL);
+	if (!spawning_pools.empty() && spawning_pools.front()->build_progress == 1.0) {
 		TryBuildStructure(ABILITY_ID::BUILD_ROACHWARREN, UNIT_TYPEID::ZERG_ROACHWARREN, 150);
 	}
-	if (GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).empty() && GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size() > 0) {
+
+	// Wait for Lair upgrade before building advanced tech structures
+	Units lairs = GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR);
+	if (lairs.empty() && !GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).empty()) {
 		TryUpgradeBase();
+	} else if (!lairs.empty() && lairs.front()->build_progress == 1.0) {
+		// Build tech structures sequentially
+		Units hydralisk_dens = GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN);
+		if (hydralisk_dens.empty()) {
+			// Build Hydralisk Den if it doesn't exist
+			if (TryBuildStructure(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_HYDRALISKDEN, 100, 50)) {
+				return; // Wait for the Hydralisk Den to start building
+			}
+		} else {
+			// Wait for Hydralisk Den to complete before proceeding
+			if (hydralisk_dens.front()->build_progress < 1.0) {
+				return; // Hydralisk Den still under construction, wait
+			}
+		}
+
+		Units spires = GetUnitsOfType(UNIT_TYPEID::ZERG_SPIRE);
+		if (spires.empty()) {
+			// Build Spire if it doesn't exist
+			if (TryBuildStructure(ABILITY_ID::BUILD_SPIRE, UNIT_TYPEID::ZERG_SPIRE, 200, 150)) {
+				return; // Wait for the Spire to start building
+			}
+		} else {
+			// Wait for Spire to complete before proceeding
+			if (spires.front()->build_progress < 1.0) {
+				return; // Spire still under construction, wait
+			}
+		}
 	}
 
-	// Build advanced tech structures after upgrading Hatchery to Lair
-	else if (!GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).empty()) {
-		TryBuildStructure(ABILITY_ID::BUILD_HYDRALISKDEN, UNIT_TYPEID::ZERG_HYDRALISKDEN, 100, 50);
-		TryBuildStructure(ABILITY_ID::BUILD_SPIRE, UNIT_TYPEID::ZERG_SPIRE, 200, 150);
-	}
-
-	// Upgrade Lair to Hive if prerequisites are met
-	else if (!GetUnitsOfType(UNIT_TYPEID::ZERG_INFESTATIONPIT).empty()) {
-		TryUpgradeBase();
-	} else if (!GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE).empty()) { // Build Infestation Pit if Hive doesn't exist
+	// Wait for Hive upgrade before building Infestation Pit
+	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
+	if (hives.empty()) {
 		TryBuildStructure(ABILITY_ID::BUILD_INFESTATIONPIT, UNIT_TYPEID::ZERG_INFESTATIONPIT, 100, 100);
 	}
+	TryUpgradeBase();
 
-	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
+	// Train units based on available tech
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 5 && !spawning_pools.empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
 	} else if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 5 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ROACH, 75, 25);
@@ -104,20 +133,19 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 }
 
 bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id, int mineral_cost, int vespene_cost) {
-	// Check if the structure already exists
+	// Check if the structure already exists or is under construction
 	if (!GetUnitsOfType(structure_id).empty()) // Already exists
 		return false;
 
-	// Check resource availability
-	if (Observation()->GetMinerals() < mineral_cost || Observation()->GetVespene() < vespene_cost)
+	if (Observation()->GetMinerals() < mineral_cost || Observation()->GetVespene() < vespene_cost) {
 		return false;
+	}
 
-	// Get available drones
 	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE);
-	if (drones.empty())
+	if (drones.empty()) {
 		return false;
+	}
 
-	// Include Hatchery, Lair, and Hive for position selection
 	Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
 	Units lairs = GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR);
 	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
@@ -125,24 +153,34 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 	bases.insert(bases.end(), lairs.begin(), lairs.end());
 	bases.insert(bases.end(), hives.begin(), hives.end());
 
-	if (bases.empty())
+	if (bases.empty()) {
 		return false;
+	}
 
 	const Unit *base = bases.front();
-	Point2D build_position = Point2D(base->pos.x + 5, base->pos.y + 5);
-
-	// Assign the first available drone to construct the structure
+	Point2D initial_build_position = Point2D(base->pos.x + 5, base->pos.y + 5);
 	const Unit *drone = drones.front();
-	for (float x_offset = -2.0f; x_offset <= 2.0f; x_offset += 1.0f) {
-		for (float y_offset = -2.0f; y_offset <= 2.0f; y_offset += 1.0f) {
-			Point2D test_position = Point2D(build_position.x + x_offset, build_position.y + y_offset);
-			if (Query()->Placement(build_structure, test_position)) {
-				Actions()->UnitCommand(drone, build_structure, test_position);
-				return true;
+	if (!drone) {
+		return false;
+	}
+
+	// Dynamically expand the search area for placement
+	const float max_search_radius = 10.0f; // Maximum radius to search for placement
+	const float step_size = 1.0f;          // Step size for expanding the search
+
+	for (float radius = 2.0f; radius <= max_search_radius; radius += step_size) {
+		for (float x_offset = -radius; x_offset <= radius; x_offset += step_size) {
+			for (float y_offset = -radius; y_offset <= radius; y_offset += step_size) {
+				Point2D test_position = Point2D(initial_build_position.x + x_offset, initial_build_position.y + y_offset);
+				if (Query()->Placement(build_structure, test_position)) {
+					Actions()->UnitCommand(drone, build_structure, test_position);
+					return true;
+				}
 			}
 		}
 	}
 
+	std::cout << "Failed to find placement for " << std::endl;
 	return false;
 }
 
