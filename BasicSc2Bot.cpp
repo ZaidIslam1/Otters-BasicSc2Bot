@@ -1,5 +1,4 @@
 #include "BasicSc2Bot.h"
-#include <ostream>
 #include <random>
 #include <sc2api/sc2_api.h>
 #include <sc2api/sc2_common.h>
@@ -75,7 +74,6 @@ void BasicSc2Bot::OnStep() {
 		}
 	}
 
-	// Train units based on available tech
 	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 25 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
 	}
@@ -99,10 +97,25 @@ void BasicSc2Bot::OnStep() {
 void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 	switch (unit->unit_type.ToType()) {
 	case UNIT_TYPEID::ZERG_DRONE: {
-		const Unit *mineral_target = FindNearestMineralPatch(unit->pos);
+		const Unit *mineral_target = FindNearestMineralPatch(unit->pos + Point2D(100, 100));
 		if (mineral_target) {
 			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
 		}
+		break;
+	}
+	case UNIT_TYPEID::ZERG_SPIRE: {
+		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERARMORLEVEL1); // Upgrades for all Air units
+		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERATTACKLEVEL1);
+		break;
+	}
+	case UNIT_TYPEID::ZERG_HYDRALISKDEN: {
+		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_GROOVEDSPINES); // Upgrades for Hydralisks
+		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_MUSCULARAUGMENTS);
+		break;
+	}
+	case UNIT_TYPEID::ZERG_SPAWNINGPOOL: {
+		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGLINGMETABOLICBOOST); // Upgrades for Zerlings
+		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGLINGADRENALGLANDS);
 		break;
 	}
 	case UNIT_TYPEID::ZERG_OVERLORD: {
@@ -132,11 +145,9 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 	if (!GetUnitsOfType(structure_id).empty()) {
 		return false;
 	}
-
 	if (Observation()->GetMinerals() < mineral_cost || Observation()->GetVespene() < vespene_cost) {
 		return false;
 	}
-
 	Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE);
 	if (drones.empty()) {
 		return false;
@@ -152,14 +163,12 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 	if (bases.empty()) {
 		return false;
 	}
-
 	const Unit *base = bases.front();
 	const Unit *drone = drones.front();
 	if (!drone) {
 		return false;
 	}
 
-	// Starting position near the base
 	// Starting position near the base
 	Point2D base_position = base->pos;
 	const float max_search_radius = 10.0f;    // Maximum radius to search for placement
@@ -174,11 +183,7 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 				if (sqrt(x_offset * x_offset + y_offset * y_offset) > radius) {
 					continue;
 				}
-
-				// Test this position for structure placement
 				Point2D test_position = Point2D(base_position.x + x_offset, base_position.y + y_offset);
-
-				// Ensure minimum distance from other structures
 				bool is_too_close = false;
 				for (const Unit *existing_structure : Observation()->GetUnits(Unit::Alliance::Self)) {
 					if (DistanceSquared2D(test_position, existing_structure->pos) < min_structure_spacing * min_structure_spacing) {
@@ -195,7 +200,6 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 		}
 	}
 
-	// No valid position found
 	return false;
 }
 
@@ -304,11 +308,6 @@ bool BasicSc2Bot::HasQueenAssigned(const Unit *base) {
 			return true;
 		}
 	}
-	// for (const auto &order : base->orders) {
-	// 	if (order.ability_id == ABILITY_ID::TRAIN_QUEEN) {
-	// 		return true; // A queen is being trained at this base
-	// 	}
-	// }
 
 	return false; // No queen assigned or being trained
 }
@@ -330,17 +329,20 @@ bool BasicSc2Bot::TryTrainOverlord() {
 
 const Unit *BasicSc2Bot::FindNearestMineralPatch(const Point2D &start) {
 	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
-	float distance = std::numeric_limits<float>::max();
+	float closest_distance = std::numeric_limits<float>::max();
 	const Unit *target = nullptr;
 	for (const auto &u : units) {
-		if (u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD) {
-			float d = DistanceSquared2D(u->pos, start);
-			if (d < distance) {
-				distance = d;
-				target = u;
+		if ((u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD || u->unit_type == UNIT_TYPEID::NEUTRAL_MINERALFIELD750) && u->mineral_contents > 0) {
+			if (u->assigned_harvesters <= u->ideal_harvesters) {
+				float distance = DistanceSquared2D(u->pos, start);
+				if (distance < closest_distance) {
+					closest_distance = distance;
+					target = u;
+				}
 			}
 		}
 	}
+
 	return target;
 }
 
