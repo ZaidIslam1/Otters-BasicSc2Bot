@@ -36,6 +36,15 @@ class BasicSc2Bot : public sc2::Agent {
 	bool HasQueenAssigned(const Unit *hatchery); // Checks if a Queen is assigned to a Hatchery
 	                                             // Scouting
 	                                             // void CommandUnitScout(const Unit *unit);
+
+	std::vector<Point3D> expansions_;
+	bool TryExpand(AbilityID build_ability, UnitTypeID worker_type);
+	bool TryBuildStructure2(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement);
+	Point3D startLocation_;
+	int GetExpectedWorkers();
+
+	void ManageWorkers();
+	void MineIdleWorkers(const Unit *worker, AbilityID abilityId);
 };
 
 #endif
