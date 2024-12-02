@@ -1,4 +1,6 @@
 #include "BasicSc2Bot.h"
+#include <cstdio>
+#include <iostream>
 #include <random>
 #include <sc2api/sc2_api.h>
 #include <sc2api/sc2_common.h>
@@ -17,11 +19,21 @@ using namespace sc2;
 */
 
 void BasicSc2Bot::OnGameStart() {
+	expansions_ = search::CalculateExpansionLocations(Observation(), Query());
+	startLocation_ = Observation()->GetStartLocation();
 	return;
 }
 
 void BasicSc2Bot::OnStep() {
 	const ObservationInterface *observation = Observation();
+
+	// Check resources and expand if needed
+	if (observation->GetMinerals() >= 300 && observation->GetArmyCount() > 1) {
+		if (TryExpand(ABILITY_ID::BUILD_HATCHERY, UNIT_TYPEID::ZERG_DRONE)) {
+			std::cout << "Hatchery expansion initiated.\n";
+			return;
+		}
+	}
 
 	if (TryTrainOverlord()) // Train Overlord if needed
 		return;
@@ -34,10 +46,18 @@ void BasicSc2Bot::OnStep() {
 	int total_bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY).size() + GetUnitsOfType(UNIT_TYPEID::ZERG_LAIR).size() + GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE).size();
 	int desired_workers = max_workers_per_base * total_bases;
 
-	if (current_workers < desired_workers) { // Train Drones if under desired count
-		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
-			return;
+	const Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+	for (const auto &base : bases) {
+		if (base->ideal_harvesters > base->assigned_harvesters) {
+			TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50);
+		}
 	}
+	// if (current_workers < desired_workers) { // Train Drones if under desired count
+	// 	if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50))
+	// 		return;
+	// }
+
+	ManageWorkers();
 
 	TryBuildVespeneExtractor(); // Build a Vespene Extractor
 	AssignWorkersToExtractors();
@@ -74,10 +94,10 @@ void BasicSc2Bot::OnStep() {
 		}
 	}
 
-	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 25 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ZERGLING).size() <= 1 && !GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL).empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ZERGLING, 50);
 	}
-	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 25 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
+	if (GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH).size() <= 20 && !GetUnitsOfType(UNIT_TYPEID::ZERG_ROACHWARREN).empty()) {
 		TrainUnitFromLarvae(ABILITY_ID::TRAIN_ROACH, 75, 25);
 	}
 	if (GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISK).size() <= 10 && !GetUnitsOfType(UNIT_TYPEID::ZERG_HYDRALISKDEN).empty()) {
@@ -97,9 +117,14 @@ void BasicSc2Bot::OnStep() {
 void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 	switch (unit->unit_type.ToType()) {
 	case UNIT_TYPEID::ZERG_DRONE: {
-		const Unit *mineral_target = FindNearestMineralPatch(unit->pos);
-		if (mineral_target) {
-			Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
+		const Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+		for (const auto &base : bases) {
+			if (!(base->build_progress != 1 || base->ideal_harvesters == 0)) {
+				const Unit *mineral_target = FindNearestMineralPatch(unit->pos);
+				if (mineral_target) {
+					Actions()->UnitCommand(unit, ABILITY_ID::SMART, mineral_target);
+				}
+			}
 		}
 		break;
 	}
@@ -114,29 +139,94 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 		break;
 	}
 	case UNIT_TYPEID::ZERG_SPAWNINGPOOL: {
-		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGLINGMETABOLICBOOST); // Upgrades for Zerlings
-		Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGLINGADRENALGLANDS);
+		// Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGLINGMETABOLICBOOST); // Upgrades for Zerlings
+		// Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGLINGADRENALGLANDS);
 		break;
 	}
 	case UNIT_TYPEID::ZERG_OVERLORD: {
-		// const GameInfo &game_info = Observation()->GetGameInfo();
-
-		// std::vector<Point2D> scouting_points;
-		// scouting_points.insert(scouting_points.end(), game_info.enemy_start_locations.begin(), game_info.enemy_start_locations.end());
-
-		// Units mineral_fields = GetUnitsOfType(UNIT_TYPEID::NEUTRAL_MINERALFIELD);
-		// for (const auto &mineral : mineral_fields) {
-		// 	scouting_points.push_back(mineral->pos);
-		// }
-		// std::shuffle(scouting_points.begin(), scouting_points.end(), std::mt19937(std::random_device()()));
-		// for (const Point2D &point : scouting_points) {
-		// 	Actions()->UnitCommand(unit, ABILITY_ID::SMART, point);
-		// 	break;
-		// }
 		break;
 	}
 	default:
 		break;
+	}
+}
+
+bool BasicSc2Bot::TryExpand(AbilityID build_ability, UnitTypeID worker_type) {
+	const ObservationInterface *observation = Observation();
+	std::vector<std::pair<float, Point3D>> distances;
+
+	const Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+	for (const auto &base : bases) {
+		// If we have already mined out or still building here skip the base.
+		if (base->build_progress != 1) {
+			return false;
+		}
+	}
+
+	// Calculate distances for all expansions
+	for (const auto &expansion : expansions_) {
+		float current_distance = Distance2D(startLocation_, expansion);
+		if (current_distance > 1.0f) { // Skip current base location
+			distances.push_back({current_distance, expansion});
+		}
+	}
+
+	// Sort by distance
+	std::sort(distances.begin(), distances.end(), [](const std::pair<float, Point3D> &a, const std::pair<float, Point3D> &b) { return a.first < b.first; });
+
+	// Use the first three closest expansions
+	for (size_t i = 0; i < std::min<size_t>(1, distances.size()); ++i) {
+		const Point3D &expansion = distances[i].second;
+
+		// Check placement and attempt to build
+		if (Query()->Placement(build_ability, expansion)) {
+			if (TryBuildStructure2(build_ability, worker_type, expansion, true)) {
+				std::cout << "Expanding to: (" << expansion.x << ", " << expansion.y << ")\n";
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void BasicSc2Bot::ManageWorkers() {
+	const ObservationInterface *observation = Observation();
+	const Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+
+	for (const auto &base : bases) {
+		if (base->build_progress != 1 || base->ideal_harvesters == 0) {
+			continue;
+		}
+		if (base->assigned_harvesters > base->ideal_harvesters) {
+			const Units drones = GetUnitsOfType(UNIT_TYPEID::ZERG_DRONE);
+			for (const auto &drone : drones) {
+				if (!drone->orders.empty()) {
+					if (drone->orders.front().target_unit_tag == base->tag) {
+						MineIdleWorkers(drone, ABILITY_ID::SMART);
+						return;
+					}
+				}
+			}
+		}
+	}
+}
+
+void BasicSc2Bot::MineIdleWorkers(const Unit *worker, AbilityID abilityId) {
+	const ObservationInterface *observation = Observation();
+	const Units bases = GetUnitsOfType(UNIT_TYPEID::ZERG_HATCHERY);
+	const Unit *valid_mineral_patch = nullptr;
+
+	for (const auto &base : bases) {
+		// If we have already mined out here skip the base.
+		if (base->ideal_harvesters == 0 || base->build_progress != 1) {
+			continue;
+		}
+		if (base->assigned_harvesters < base->ideal_harvesters) {
+			valid_mineral_patch = FindNearestMineralPatch(base->pos);
+			Actions()->UnitCommand(worker, ABILITY_ID::SMART, valid_mineral_patch);
+			return;
+		}
 	}
 }
 
@@ -314,17 +404,35 @@ bool BasicSc2Bot::HasQueenAssigned(const Unit *base) {
 
 bool BasicSc2Bot::TryTrainOverlord() {
 	const ObservationInterface *observation = Observation();
-	if (observation->GetFoodUsed() <= observation->GetFoodCap() - 2) // Workers cap hasn't reached return false
-		return false;
 
-	Units larvas = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
-	for (const auto &larva : larvas) {
-		if (observation->GetMinerals() >= 100) {
-			Actions()->UnitCommand(larva, ABILITY_ID::TRAIN_OVERLORD); // Checks for available larva and trains an overlord
+	// Stop training overlords if supply cap is at maximum (200)
+	if (observation->GetFoodCap() >= 200) {
+		std::cout << "Supply cap reached, no need for overlords.\n";
+		return false;
+	}
+
+	// Check if supply is needed
+	if (observation->GetFoodUsed() >= observation->GetFoodCap() - 2) {
+		// Check if an overlord is already in production
+		Units overlords = GetUnitsOfType(UNIT_TYPEID::ZERG_OVERLORD);
+		for (const auto &overlord : overlords) {
+			if (overlord->build_progress < 1.0f) {
+				std::cout << "Overlord already in production.\n";
+				return false;
+			}
+		}
+
+		// Train an overlord if resources allow
+		Units larvae = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
+		if (!larvae.empty() && observation->GetMinerals() >= 100) {
+			Actions()->UnitCommand(larvae.front(), ABILITY_ID::TRAIN_OVERLORD);
+			std::cout << "Training a new overlord.\n";
 			return true;
 		}
 	}
-	return false; // All larvas are busy return false
+
+	// No overlord needed
+	return false;
 }
 
 const Unit *BasicSc2Bot::FindNearestMineralPatch(const Point2D &start) {
@@ -373,4 +481,33 @@ Units BasicSc2Bot::GetUnitsOfType(UNIT_TYPEID type) {
 	}
 
 	return units_vector; // Return the vector
+}
+
+bool BasicSc2Bot::TryBuildStructure2(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement) {
+	const ObservationInterface *observation = Observation();
+
+	// Check resources before proceeding
+	if (observation->GetMinerals() < 300) {
+		std::cout << "Not enough minerals to build structure.\n";
+		return false;
+	}
+
+	// Get available workers
+	Units workers = observation->GetUnits(
+	    Unit::Self, [worker_type](const Unit &unit) { return unit.unit_type == worker_type && (unit.orders.empty() || unit.orders[0].ability_id == ABILITY_ID::HARVEST_GATHER); });
+
+	std::cout << "Available workers: " << workers.size() << "\n";
+
+	if (workers.empty()) {
+		std::cerr << "No available workers to build structure.\n";
+		return false;
+	}
+
+	// Use the first available worker
+	const Unit *worker = workers.front();
+
+	// Stop the worker and issue the build command
+	Actions()->UnitCommand(worker, ABILITY_ID::STOP);
+	Actions()->UnitCommand(worker, build_ability, location);
+	return true;
 }
