@@ -6,6 +6,9 @@
 #include "sc2lib/sc2_lib.h"
 #include "sc2utils/sc2_arg_parser.h"
 #include "sc2utils/sc2_manage_process.h"
+#include <algorithm>
+#include <cmath>
+#include <iostream>
 #include <sc2api/sc2_typeenums.h>
 #include <sc2api/sc2_unit.h>
 
@@ -20,7 +23,7 @@ class BasicSc2Bot : public sc2::Agent {
   private:
 	const Unit *FindNearestMineralPatch(const Point2D &start);
 	const Unit *FindNearestVespenseGeyser(const Point2D &start);
-	Units GetUnitsOfType(UNIT_TYPEID type); 								// Retrieves units of the specified type
+	Units GetUnitsOfType(UNIT_TYPEID type); // Retrieves units of the specified type
 
 	void AssignWorkersToExtractors();                                                                                     // Assign workers to vespene extractors
 	bool TryBuildVespeneExtractor();                                                                                      // Creates a Vespene Extractor at the closest location
@@ -37,18 +40,20 @@ class BasicSc2Bot : public sc2::Agent {
 	bool TryBuildStructure(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement);
 	Point3D startLocation_;
 	int GetExpectedWorkers();
-	void BalanceWorkers(); 												// Balances workers among bases
 
-	void ManageArmy();                        					// Function to manage army units and attack
-	void AttackWithArmy();                    					// Function to order the army to attack
-	bool TrainArmyUnits();                    					// Trains army units based on available tech structures
-	void TryBuildTechStructuresAndUpgrades(); 					// Builds tech structures and researches upgrades
-	Units GetActiveBases();                  					// Returns a list of active bases (Hatcheries, Lairs, Hives)
+	void BalanceWorkers(); // Balances workers among bases
+
+	void ManageArmy();                        // Function to manage army units and attack
+	void AttackWithArmy();                    // Function to order the army to attack
+	bool TrainArmyUnits();                    // Trains army units based on available tech structures
+	void TryBuildTechStructuresAndUpgrades(); // Builds tech structures and researches upgrades
+	Units GetActiveBases();                   // Returns a list of active bases (Hatcheries, Lairs, Hives)
 	int CountUnitType(UNIT_TYPEID unit_type);
-	std::vector<Point2D> enemy_base_locations_; 				// Possible enemy base locations
+	std::vector<Point2D> enemy_base_locations_; // Possible enemy base locations
 	size_t current_target_index_;
-	bool IsCombatUnit(const Unit &unit); 						// Helper function to check if a unit is a combat unit
+	bool IsCombatUnit(const Unit &unit); // Helper function to check if a unit is a combat unit
 	Point2D GetArmyRallyPoint();
+	void MorphRoachesToRavagers();
 };
 
 #endif
