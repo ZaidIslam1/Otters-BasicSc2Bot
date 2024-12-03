@@ -140,10 +140,10 @@ bool BasicSc2Bot::TrainArmyUnits() {
 	int hydralisk_count = CountUnitType(UNIT_TYPEID::ZERG_HYDRALISK);
 	int mutalisk_count = CountUnitType(UNIT_TYPEID::ZERG_MUTALISK);
 
-	const int max_zerglings = 10; // Counts we want
-	const int max_roaches = 20;
-	const int max_hydralisks = 10;
-	const int max_mutalisks = 10;
+	const int max_zerglings = 5; // Counts we want
+	const int max_roaches = 5;
+	const int max_hydralisks = 5;
+	const int max_mutalisks = 5;
 
 	// Train combat units based on available tech structures and unit counts
 	if (!spawning_pools.empty() && spawning_pools.front()->build_progress == 1.0f && zergling_count < max_zerglings) {
@@ -256,6 +256,15 @@ Units BasicSc2Bot::GetActiveBases() { // Gets number of active bases
 	Units hives = GetUnitsOfType(UNIT_TYPEID::ZERG_HIVE);
 	bases.insert(bases.end(), lairs.begin(), lairs.end());
 	bases.insert(bases.end(), hives.begin(), hives.end());
+
+	Units active_bases; // Filter out bases that are not completed or are destroyed
+	for (const auto &base : bases) {
+		if (base->build_progress == 1.0f && base->health > 0) {
+			active_bases.push_back(base);
+		}
+	}
+	return active_bases;
+
 	return bases;
 }
 
@@ -479,7 +488,7 @@ void BasicSc2Bot::AssignWorkersToExtractors() {
 }
 
 bool BasicSc2Bot::TryBuildVespeneExtractor() {
-	const int max_extractors = 4;
+	const int max_extractors = 5;
 	int current_extractors = GetUnitsOfType(UNIT_TYPEID::ZERG_EXTRACTOR).size();
 	if (current_extractors >= max_extractors) { // If max extractor count hit, dont build
 		return false;
