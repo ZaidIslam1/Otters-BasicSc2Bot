@@ -3,6 +3,14 @@
 #include <cmath>
 #include <sc2api/sc2_typeenums.h>
 
+/*
+# Windows
+./BasicSc2Bot.exe -c -a zerg -d Hard -m CactusValleyLE.SC2Map
+
+# Mac
+./BasicSc2Bot -c -a zerg -d Hard -m CactusValleyLE.SC2Map
+*/
+
 using namespace sc2;
 
 void BasicSc2Bot::OnGameStart() {
@@ -23,7 +31,7 @@ void BasicSc2Bot::OnStep() {
 
 	Units spawning_pools = GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL);
 	if (spawning_pools.empty()) {
-		if (observation->GetMinerals() >= 200 && observation->GetMinerals() > 1000) { // Attempt to build the Spawning Pool if we have enough minerals
+		if (observation->GetMinerals() >= 200 && observation->GetMinerals() > 1200) { // Attempt to build the Spawning Pool if we have enough minerals
 			if (TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200)) {
 				return;
 			} else {
@@ -389,7 +397,7 @@ void BasicSc2Bot::MorphRoachesToRavagers() {
 		return;
 	}
 
-	Units roaches = observation->GetUnits(Unit::Alliance::Self, [](const Unit &unit) { return unit.unit_type == UNIT_TYPEID::ZERG_ROACH; });
+	Units roaches = GetUnitsOfType(UNIT_TYPEID::ZERG_ROACH);
 
 	int ravager_count = CountUnitType(UNIT_TYPEID::ZERG_RAVAGER);
 	int desired_ravager_count = 7;
