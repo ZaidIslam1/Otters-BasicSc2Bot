@@ -1,7 +1,4 @@
 #include "BasicSc2Bot.h"
-#include <algorithm>
-#include <cmath>
-#include <sc2api/sc2_typeenums.h>
 
 /*
 # Windows
@@ -105,6 +102,10 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 		if (unit->orders.empty()) {
 			Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERARMORLEVEL1);
 			Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERATTACKLEVEL1);
+			Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERARMORLEVEL2);
+			Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERATTACKLEVEL2);
+			Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERARMORLEVEL3);
+			Actions()->UnitCommand(unit, ABILITY_ID::RESEARCH_ZERGFLYERATTACKLEVEL3);
 		}
 		break;
 	}
