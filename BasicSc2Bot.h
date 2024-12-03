@@ -53,7 +53,7 @@ class BasicSc2Bot : public sc2::Agent {
 	size_t current_target_index_;
 	bool IsCombatUnit(const Unit &unit); // Helper function to check if a unit is a combat unit
 	Point2D GetArmyRallyPoint();
-	void MorphRoachesToRavagers();
+	void MorphRoachesToRavagers(); // Morphs roaches to ravagers
 };
 
 #endif
