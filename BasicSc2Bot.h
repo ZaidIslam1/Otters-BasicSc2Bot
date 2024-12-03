@@ -18,33 +18,37 @@ class BasicSc2Bot : public sc2::Agent {
 	virtual void OnUnitIdle(const Unit *unit);
 
   private:
-	// Utility methods
 	const Unit *FindNearestMineralPatch(const Point2D &start);
 	const Unit *FindNearestVespenseGeyser(const Point2D &start);
-	Units GetUnitsOfType(UNIT_TYPEID type); // Retrieves units of the specified type
+	Units GetUnitsOfType(UNIT_TYPEID type); 								// Retrieves units of the specified type
 
-	// Zerg management methods
-	void AssignWorkersToExtractors();                                                                                     // Assign workers to vespene extractor
+	void AssignWorkersToExtractors();                                                                                     // Assign workers to vespene extractors
 	bool TryBuildVespeneExtractor();                                                                                      // Creates a Vespene Extractor at the closest location
 	bool TryTrainOverlord();                                                                                              // Handles Zerg supply management
 	bool QueenInjectLarvae();                                                                                             // Manages larvae injection using Queens
 	bool TrainUnitFromLarvae(ABILITY_ID unit_ability, int mineral_cost, int vespene_cost = 0);                            // Trains units from larvae
-	bool TryUpgradeBase();                                                                                                // For upgrading base to Liar, Hive
+	bool TryUpgradeBase();                                                                                                // For upgrading base to Lair, Hive
 	bool TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID structure_id, int mineral_cost, int vespene_cost = 0); // Build Structure
 
-	// Queen management
-	bool HasQueenAssigned(const Unit *hatchery); // Checks if a Queen is assigned to a Hatchery
-	                                             // Scouting
-	                                             // void CommandUnitScout(const Unit *unit);
+	bool HasQueenAssigned(const Unit *base); // Checks if a Queen is assigned to a base
 
 	std::vector<Point3D> expansions_;
 	bool TryExpand(AbilityID build_ability, UnitTypeID worker_type);
-	bool TryBuildStructure2(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement);
+	bool TryBuildStructure(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement);
 	Point3D startLocation_;
 	int GetExpectedWorkers();
+	void BalanceWorkers(); 												// Balances workers among bases
 
-	void ManageWorkers();
-	void MineIdleWorkers(const Unit *worker, AbilityID abilityId);
+	void ManageArmy();                        					// Function to manage army units and attack
+	void AttackWithArmy();                    					// Function to order the army to attack
+	bool TrainArmyUnits();                    					// Trains army units based on available tech structures
+	void TryBuildTechStructuresAndUpgrades(); 					// Builds tech structures and researches upgrades
+	Units GetActiveBases();                  					// Returns a list of active bases (Hatcheries, Lairs, Hives)
+	int CountUnitType(UNIT_TYPEID unit_type);
+	std::vector<Point2D> enemy_base_locations_; 				// Possible enemy base locations
+	size_t current_target_index_;
+	bool IsCombatUnit(const Unit &unit); 						// Helper function to check if a unit is a combat unit
+	Point2D GetArmyRallyPoint();
 };
 
 #endif
