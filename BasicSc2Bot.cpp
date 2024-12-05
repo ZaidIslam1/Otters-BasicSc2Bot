@@ -28,11 +28,11 @@ void BasicSc2Bot::OnStep() {
 
 	Units spawning_pools = GetUnitsOfType(UNIT_TYPEID::ZERG_SPAWNINGPOOL);
 	if (spawning_pools.empty()) {
-		if (observation->GetMinerals() >= 200 && observation->GetMinerals() > 1200) { // Attempt to build the Spawning Pool if we have enough minerals
-			if (TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200)) {
-				return;
-			} else {
-			}
+		if (once && observation->GetMinerals() > 200) {
+			TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200, 0);
+			once = false;
+		} else if (!once && observation->GetMinerals() > 600) {
+			TryBuildStructure(ABILITY_ID::BUILD_SPAWNINGPOOL, UNIT_TYPEID::ZERG_SPAWNINGPOOL, 200, 0);
 		}
 	} else if (spawning_pools.front()->build_progress < 1.0f) { // Wait for spawnning pool to complete
 		return;
@@ -58,7 +58,7 @@ void BasicSc2Bot::OnStep() {
 	}
 
 	// Try to expand if we have less than max_bases and sufficient army units
-	const int max_bases = 2;
+	const int max_bases = 5;
 	Units bases = GetActiveBases();
 	if (bases.size() < max_bases && observation->GetMinerals() >= 300) {
 		Units combat_units = observation->GetUnits(Unit::Alliance::Self, [](const Unit &unit) { // Check if we have some combat units before expanding
@@ -96,6 +96,7 @@ void BasicSc2Bot::OnUnitIdle(const Unit *unit) {
 	case UNIT_TYPEID::ZERG_RAVAGER: {
 		Point2D rally_point = GetArmyRallyPoint();
 		Actions()->UnitCommand(unit, ABILITY_ID::ATTACK, rally_point);
+		ManageArmy();
 		break;
 	}
 	case UNIT_TYPEID::ZERG_SPIRE: { // Research upgrades if not already researching
@@ -170,6 +171,9 @@ int BasicSc2Bot::CountUnitType(UNIT_TYPEID unit_type) {
 
 bool BasicSc2Bot::TrainUnitFromLarvae(ABILITY_ID unit_ability, int mineral_cost, int vespene_cost) {
 	Units larvae = GetUnitsOfType(UNIT_TYPEID::ZERG_LARVA);
+	if (larvae.empty()) { // Ensure larvae is not empty
+		return false;
+	}
 
 	for (const auto &larva : larvae) {
 		if (Observation()->GetMinerals() >= mineral_cost && Observation()->GetVespene() >= vespene_cost) {
@@ -224,11 +228,10 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 	const float step_size = 1.0f;             // Step size for expanding the search
 	const float min_structure_spacing = 3.0f; // Minimum spacing between structures
 
-	// Search in all directions around the base
 	for (float radius = 2.0f; radius <= max_search_radius; radius += step_size) {
 		for (float x_offset = -radius; x_offset <= radius; x_offset += step_size) {
 			for (float y_offset = -radius; y_offset <= radius; y_offset += step_size) {
-				if (sqrt(x_offset * x_offset + y_offset * y_offset) > radius) { // Skip positions that are outside the circular search radius
+				if (sqrt(x_offset * x_offset + y_offset * y_offset) > radius) { // Skip positions outside circular search radius
 					continue;
 				}
 				Point2D test_position = Point2D(base_position.x + x_offset, base_position.y + y_offset);
@@ -240,7 +243,7 @@ bool BasicSc2Bot::TryBuildStructure(ABILITY_ID build_structure, UNIT_TYPEID stru
 					}
 				}
 
-				if (!is_too_close && Query()->Placement(build_structure, test_position)) {
+				if (!is_too_close && Query()->Placement(build_structure, test_position)) { // Validate placement
 					Actions()->UnitCommand(drone, ABILITY_ID::STOP);
 					Actions()->UnitCommand(drone, build_structure, test_position);
 					return true;
@@ -258,13 +261,13 @@ Units BasicSc2Bot::GetActiveBases() { // Gets number of active bases
 	bases.insert(bases.end(), lairs.begin(), lairs.end());
 	bases.insert(bases.end(), hives.begin(), hives.end());
 
-	Units active_bases; // Filter out bases that are not completed or are destroyed
-	for (const auto &base : bases) {
-		if (base->build_progress == 1.0f && base->health > 0) {
-			active_bases.push_back(base);
-		}
-	}
-	return active_bases;
+	// Units active_bases; // Filter out bases that are not completed or are destroyed
+	// for (const auto &base : bases) {
+	// 	if (base->build_progress == 1.0f && base->health > 0) {
+	// 		active_bases.push_back(base);
+	// 	}
+	// }
+	// return active_bases;
 
 	return bases;
 }
@@ -429,12 +432,12 @@ void BasicSc2Bot::MorphRoachesToRavagers() {
 }
 
 void BasicSc2Bot::ManageArmy() { // Checkpoint to see if army should attack (if we have enough army units)
-	if (Observation()->GetArmyCount() > 15) {
+	if (Observation()->GetArmyCount() > 14) {
 		AttackWithArmy();
 	}
 }
 
-void BasicSc2Bot::AttackWithArmy() { // Send army
+void BasicSc2Bot::AttackWithArmy() {
 	const ObservationInterface *observation = Observation();
 
 	Units combat_units = observation->GetUnits(Unit::Alliance::Self, [](const Unit &unit) { // Get all combat units
@@ -442,7 +445,7 @@ void BasicSc2Bot::AttackWithArmy() { // Send army
 		       unit.unit_type == UNIT_TYPEID::ZERG_MUTALISK || unit.unit_type == UNIT_TYPEID::ZERG_RAVAGER;
 	});
 
-	if (combat_units.empty()) {
+	if (combat_units.empty()) { // Ensure we have combat units
 		return;
 	}
 
@@ -450,9 +453,11 @@ void BasicSc2Bot::AttackWithArmy() { // Send army
 
 	if (!enemy_units.empty()) { // If enemy's found, attack closest enemy
 		const Unit *target = enemy_units.front();
-		for (const auto &unit : combat_units) {
-			if (unit->orders.empty()) {
-				Actions()->UnitCommand(unit, ABILITY_ID::ATTACK, target->pos);
+		if (target) { // Ensure target is valid
+			for (const auto &unit : combat_units) {
+				if (unit->orders.empty()) {
+					Actions()->UnitCommand(unit, ABILITY_ID::ATTACK, target->pos);
+				}
 			}
 		}
 	} else { // If no enemy's found, attack enemy known home base locations
@@ -489,7 +494,7 @@ void BasicSc2Bot::AssignWorkersToExtractors() {
 }
 
 bool BasicSc2Bot::TryBuildVespeneExtractor() {
-	const int max_extractors = 5;
+	const int max_extractors = GetActiveBases().size() * 2;
 	int current_extractors = GetUnitsOfType(UNIT_TYPEID::ZERG_EXTRACTOR).size();
 	if (current_extractors >= max_extractors) { // If max extractor count hit, dont build
 		return false;
@@ -600,6 +605,10 @@ bool BasicSc2Bot::TryTrainOverlord() {
 
 const Unit *BasicSc2Bot::FindNearestMineralPatch(const Point2D &start) {
 	Units units = Observation()->GetUnits(Unit::Alliance::Neutral);
+	if (units.empty()) { // Ensure there are units to process
+		return nullptr;
+	}
+
 	float closest_distance = std::numeric_limits<float>::max();
 	const Unit *target = nullptr;
 	for (const auto &u : units) {
@@ -698,7 +707,7 @@ bool BasicSc2Bot::TryExpand(AbilityID build_ability, UnitTypeID worker_type) {
 		}
 
 		if (Query()->Placement(build_ability, expansion)) {
-			if (TryBuildStructure(build_ability, worker_type, expansion, true)) {
+			if (TryBuildStructure2(build_ability, worker_type, expansion, true)) {
 				return true;
 			}
 		}
@@ -738,7 +747,7 @@ bool BasicSc2Bot::TryUpgradeBase() {
 	return false;
 }
 
-bool BasicSc2Bot::TryBuildStructure(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement) {
+bool BasicSc2Bot::TryBuildStructure2(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement) {
 	const ObservationInterface *observation = Observation();
 
 	// Check resources before proceeding

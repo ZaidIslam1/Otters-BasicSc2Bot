@@ -37,7 +37,7 @@ class BasicSc2Bot : public sc2::Agent {
 
 	std::vector<Point3D> expansions_;
 	bool TryExpand(AbilityID build_ability, UnitTypeID worker_type);
-	bool TryBuildStructure(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement);
+	bool TryBuildStructure2(AbilityID build_ability, UnitTypeID worker_type, const Point3D &location, bool check_placement);
 	Point3D startLocation_;
 	int GetExpectedWorkers();
 
@@ -54,6 +54,7 @@ class BasicSc2Bot : public sc2::Agent {
 	bool IsCombatUnit(const Unit &unit); // Helper function to check if a unit is a combat unit
 	Point2D GetArmyRallyPoint();
 	void MorphRoachesToRavagers(); // Morphs roaches to ravagers
+	bool once = true;
 };
 
 #endif
