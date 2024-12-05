@@ -58,7 +58,7 @@ void BasicSc2Bot::OnStep() {
 	}
 
 	// Try to expand if we have less than max_bases and sufficient army units
-	const int max_bases = 5;
+	const int max_bases = 4;
 	Units bases = GetActiveBases();
 	if (bases.size() < max_bases && observation->GetMinerals() >= 300) {
 		Units combat_units = observation->GetUnits(Unit::Alliance::Self, [](const Unit &unit) { // Check if we have some combat units before expanding
