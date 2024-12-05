@@ -20,7 +20,7 @@ void BasicSc2Bot::OnGameStart() {
 void BasicSc2Bot::OnStep() {
 	const ObservationInterface *observation = Observation();
 
-	if (observation->GetFoodWorkers() < 10) {
+	if (observation->GetFoodWorkers() < (10 * GetActiveBases().size())) {
 		if (TrainUnitFromLarvae(ABILITY_ID::TRAIN_DRONE, 50)) {
 			return;
 		}
