@@ -11,13 +11,22 @@
 using namespace sc2;
 
 void BasicSc2Bot::OnGameStart() {
-	expansions_ = search::CalculateExpansionLocations(Observation(), Query());
+	// expansions_ = search::CalculateExpansionLocations(Observation(), Query());
 	startLocation_ = Observation()->GetStartLocation();
 	enemy_base_locations_ = Observation()->GetGameInfo().enemy_start_locations; // Store possible enemy base locations
 	current_target_index_ = 0;                                                  // Initialize the target index
 }
 
 void BasicSc2Bot::OnStep() {
+	++step_counter;
+	// Wait for 10 frames
+	if (step_counter < 10) {
+		return;
+	}
+	if (expansion_once) {
+		expansions_ = search::CalculateExpansionLocations(Observation(), Query());
+		expansion_once = false;
+	}
 	const ObservationInterface *observation = Observation();
 
 	if (observation->GetFoodWorkers() < (10 * GetActiveBases().size())) {

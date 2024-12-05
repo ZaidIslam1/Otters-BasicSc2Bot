@@ -55,6 +55,8 @@ class BasicSc2Bot : public sc2::Agent {
 	Point2D GetArmyRallyPoint();
 	void MorphRoachesToRavagers(); // Morphs roaches to ravagers
 	bool once = true;
+	bool expansion_once = true;
+	int step_counter = 0;
 };
 
 #endif
